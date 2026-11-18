@@ -1,0 +1,173 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+  --app-bg: #f8fafc;
+  --app-surface: #ffffff;
+  --app-surface-soft: #f1f5f9;
+  --app-text: #0f172a;
+  --app-text-soft: #475569;
+  --app-border: rgba(148, 163, 184, 0.35);
+  --app-scroll: rgba(100, 116, 139, 0.30);
+}
+
+.dark {
+  color-scheme: dark;
+  --app-bg: #0f172a;
+  --app-surface: #111827;
+  --app-surface-soft: #1e293b;
+  --app-text: #e2e8f0;
+  --app-text-soft: #cbd5e1;
+  --app-border: rgba(51, 65, 85, 0.9);
+  --app-scroll: rgba(148, 163, 184, 0.35);
+}
+
+@layer base {
+  html {
+    background: var(--app-bg);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--app-bg);
+    color: var(--app-text);
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: rgba(45, 212, 191, 0.24);
+    color: inherit;
+  }
+
+  * {
+    scrollbar-color: var(--app-scroll) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--app-scroll);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.5);
+  }
+}
+
+/* Kontainer offscreen untuk render docx-preview sebelum window.print() tanpa display:none agar SVG/VML getBBox() terukur benar */
+.laporan-print-host {
+  position: fixed;
+  left: -220vw;
+  top: 0;
+  width: 8.5in;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.docx-preview-host .docx-wrapper section.docx > article:not(:last-of-type),
+#laporan-print-root .docx-wrapper section.docx > article:not(:last-of-type) {
+  margin-bottom: 0 !important;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body.laporan-printing > *:not(#laporan-print-root) {
+    display: none !important;
+  }
+  body.laporan-printing #laporan-print-root {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    z-index: auto !important;
+    display: block !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    page: laporan-letter;
+  }
+  body.laporan-printing #laporan-print-root[data-paper='a4'] {
+    page: laporan-a4;
+  }
+  body.laporan-printing #laporan-print-root .docx-wrapper {
+    background: transparent !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+  body.laporan-printing #laporan-print-root section.docx {
+    box-shadow: none !important;
+    margin: 0 auto !important;
+    page-break-after: always;
+    break-after: page;
+  }
+  body.laporan-printing #laporan-print-root section.docx[data-fixed-page='true'] {
+    height: 11in !important;
+    max-height: 11in !important;
+    overflow: hidden !important;
+  }
+  body.laporan-printing #laporan-print-root[data-paper='a4'] section.docx[data-fixed-page='true'] {
+    height: 297mm !important;
+    max-height: 297mm !important;
+  }
+  body.laporan-printing #laporan-print-root section.docx[data-table-page='true'] {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+  body.laporan-printing #laporan-print-root section.docx:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  body.medical-record-printing > *:not(#medical-record-print-root) {
+    display: none !important;
+  }
+  body.medical-record-printing #medical-record-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    page: medical-record-a4;
+  }
+  body.medical-record-printing #medical-record-print-root .mr-break-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+@page laporan-letter {
+  size: letter;
+  margin: 0;
+}
+
+@page laporan-a4 {
+  size: A4;
+  margin: 0;
+}
+
+@page medical-record-a4 {
+  size: A4 portrait;
+  margin: 12mm 14mm;
+}

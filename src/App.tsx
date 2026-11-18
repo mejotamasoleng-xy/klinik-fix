@@ -1,0 +1,173 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { lazy, Suspense, useState, useEffect } from 'react';
+import Header from './components/Header';
+import Sidebar, { TabKey } from './components/Sidebar';
+import LoginView from './components/LoginView';
+import AppFeedbackHost from './components/AppFeedbackHost';
+import { AUTH_CHANGED_EVENT, getCurrentSession, logoutSession } from './lib/auth';
+import { showToast } from './lib/feedback';
+import { getTodayFormatted, store, useStoreSync } from './lib/storage';
+import { WbpItem } from './types';
+
+// Keep infrequently used, data-heavy screens out of the initial bundle.
+const DailyInput = lazy(() => import('./components/DailyInput'));
+const WbpDirectory = lazy(() => import('./components/WbpDirectory'));
+const MonthlyRecap = lazy(() => import('./components/MonthlyRecap'));
+const BpjsDashboard = lazy(() => import('./components/BpjsDashboard'));
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const MasterObat = lazy(() => import('./components/MasterObat'));
+const LaporanObat = lazy(() => import('./components/LaporanObat'));
+const LaporanPage = lazy(() => import('./components/LaporanPage'));
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const MedicalRecordModal = lazy(() => import('./components/MedicalRecordModal'));
+
+export default function App() {
+  const storeVersion = useStoreSync();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return getCurrentSession() !== null;
+  });
+
+  const [activeTab, setActiveTab] = useState<TabKey>('input');
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('klinik_dompu_theme') === 'dark';
+  });
+
+  const [selectedPatientForRecord, setSelectedPatientForRecord] = useState<WbpItem | null>(null);
+
+  const [counts, setCounts] = useState({
+    todayVisits: 0,
+    totalWbp: 0,
+    pendingBpjs: 0,
+    flaggedSidb: 0,
+  });
+
+  const updateCounts = () => {
+    const todayStr = getTodayFormatted();
+    const visits = store.getCalculatedKunjungan(false);
+    const wbps = store.getWbpList();
+
+    setCounts({
+      todayVisits: visits.filter((k) => k.tanggal === todayStr).length,
+      totalWbp: wbps.length,
+      pendingBpjs: wbps.filter((w) => w.batch_bpjs === 'Belum masuk batch').length,
+      flaggedSidb: wbps.filter((w) => w.perlu_dicek).length,
+    });
+  };
+
+  useEffect(() => {
+    store.setAuthenticated(isAuthenticated);
+    if (isAuthenticated) updateCounts();
+  }, [isAuthenticated, activeTab, storeVersion]);
+
+  useEffect(() => {
+    const onAuthChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ isAuthenticated?: boolean; reason?: string }>).detail;
+      const nextAuth = Boolean(detail?.isAuthenticated);
+      setIsAuthenticated(nextAuth);
+      if (nextAuth) {
+        setActiveTab('input');
+        store.logAudit('Login Berhasil', 'Petugas berhasil masuk ke sistem klinik');
+      } else if (detail?.reason) {
+        showToast(detail.reason, 'warning');
+      }
+    };
+    window.addEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
+  }, []);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('klinik_dompu_theme');
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+      setDarkMode(savedTheme === 'dark');
+    }
+  }, [storeVersion]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+    localStorage.setItem('klinik_dompu_theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
+
+  const handleLogout = () => {
+    store.logAudit('Logout', 'Petugas keluar dari sistem klinik');
+    logoutSession();
+    setIsAuthenticated(false);
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <LoginView
+          onLoginSuccess={() => {
+            setIsAuthenticated(true);
+            setActiveTab('input');
+          }}
+        />
+        <AppFeedbackHost />
+      </>
+    );
+  }
+
+  const freshSelectedPatient = selectedPatientForRecord
+    ? store.getWbpById(selectedPatientForRecord.id) || selectedPatientForRecord
+    : null;
+
+  const tabLabels: Record<TabKey, string> = {
+    input: 'Input Harian Pelayanan Medis',
+    pasien: 'Direktori Data Warga Binaan (DATA_WBP)',
+    rekap: 'Laporan Rekapitulasi Penyakit Bulanan',
+    bpjs: 'Dashboard Pengalihan Faskes BPJS',
+    dashboard: 'Ringkasan Layanan Klinik',
+    laporan: 'Laporan Bulanan (.docx)',
+    master_obat: 'Master Obat & Sediaan',
+    laporan_obat: 'Laporan Pengeluaran Obat',
+    pengaturan: 'Pengaturan Sistem & Master Data',
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased">
+      <Header
+        darkMode={darkMode}
+        onToggleDarkMode={() => setDarkMode((current) => !current)}
+        onOpenSettings={() => setActiveTab('pengaturan')}
+        onLogout={handleLogout}
+        onSelectPatient={(wbp) => setSelectedPatientForRecord(wbp)}
+        activeTabLabel={tabLabels[activeTab]}
+      />
+
+      <div className="flex-1 flex overflow-hidden">
+        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} counts={counts} />
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 lg:pb-8">
+          <div className="max-w-7xl mx-auto">
+            <Suspense fallback={<div className="p-8 text-center text-sm text-slate-500">Memuat halaman…</div>}>
+              {activeTab === 'input' && (
+                <DailyInput onOpenMedicalRecord={setSelectedPatientForRecord} onRefreshData={updateCounts} />
+              )}
+              {activeTab === 'pasien' && <WbpDirectory onSelectWbp={setSelectedPatientForRecord} />}
+              {activeTab === 'rekap' && <MonthlyRecap />}
+              {activeTab === 'bpjs' && <BpjsDashboard />}
+              {activeTab === 'dashboard' && (
+                <Dashboard onNavigateToTab={setActiveTab} onSelectWbp={setSelectedPatientForRecord} />
+              )}
+              {activeTab === 'laporan' && <LaporanPage />}
+              {activeTab === 'master_obat' && <MasterObat />}
+              {activeTab === 'laporan_obat' && <LaporanObat />}
+              {activeTab === 'pengaturan' && <SettingsModal />}
+              {freshSelectedPatient && (
+                <MedicalRecordModal wbp={freshSelectedPatient} onClose={() => setSelectedPatientForRecord(null)} />
+              )}
+            </Suspense>
+          </div>
+        </main>
+      </div>
+
+      <footer className="border-t border-slate-200 dark:border-slate-700/70 bg-white dark:bg-slate-900 px-4 py-3 text-center text-xs text-slate-500 dark:text-slate-400">
+        Made with <span aria-label="love">❤️</span> by Joshua | © 2026
+      </footer>
+      <AppFeedbackHost />
+    </div>
+  );
+}
